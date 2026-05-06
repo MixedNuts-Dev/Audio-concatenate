@@ -15,20 +15,21 @@ $FFMPEG_BINS = @(
     "swscale-8.dll"
 )
 $DIST_DIR = "dist\AudioToVideo"
+$FFMPEG_DEST = "$DIST_DIR\bin"
 
-# PyInstaller の確認
+# Check PyInstaller
 python -c "import PyInstaller" 2>$null
 if (-not $?) {
-    Write-Host "PyInstaller をインストール中..."
+    Write-Host "Installing PyInstaller..."
     pip install pyinstaller
 }
 
-# 前回のビルドをクリーン
+# Clean previous build
 foreach ($d in "dist", "build") {
     if (Test-Path $d) { Remove-Item $d -Recurse -Force }
 }
 
-# ビルド実行 (--onedir)
+# Build (--onedir)
 python -m PyInstaller `
     --noconsole `
     --onedir `
@@ -41,24 +42,25 @@ python -m PyInstaller `
     app.py
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "ビルド失敗 (exit code $LASTEXITCODE)"
+    Write-Error "Build failed (exit code $LASTEXITCODE)"
     exit $LASTEXITCODE
 }
 
-# FFmpeg バイナリを dist\AudioToVideo\ にコピー
+# Copy FFmpeg binaries to dist\AudioToVideo\bin\
 Write-Host ""
-Write-Host "FFmpeg バイナリをコピー中..."
+Write-Host "Copying FFmpeg binaries..."
+New-Item -ItemType Directory -Force -Path $FFMPEG_DEST | Out-Null
 foreach ($bin in $FFMPEG_BINS) {
     $src = Join-Path $FFMPEG_SRC $bin
-    $dst = Join-Path $DIST_DIR $bin
+    $dst = Join-Path $FFMPEG_DEST $bin
     if (-not (Test-Path $src)) {
-        Write-Error "FFmpeg ファイルが見つかりません: $src"
+        Write-Error "FFmpeg file not found: $src"
         exit 1
     }
     Copy-Item $src $dst -Force
-    Write-Host "  コピー: $bin"
+    Write-Host "  Copied: bin\$bin"
 }
 
 Write-Host ""
-Write-Host "ビルド成功: $DIST_DIR\AudioToVideo.exe"
-Write-Host "配布時は $DIST_DIR\ フォルダごと配布してください。"
+Write-Host "Build successful: $DIST_DIR\AudioToVideo.exe"
+Write-Host "Distribute the entire $DIST_DIR\ folder."

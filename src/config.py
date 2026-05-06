@@ -19,13 +19,13 @@ CONFIG_FILE: Path = PROJECT_ROOT / "config.json"
 
 def _default_ffmpeg() -> Path:
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent / "ffmpeg.exe"
+        return Path(sys.executable).parent / "bin" / "ffmpeg.exe"
     return Path(r"D:\develop\ffmpeg-master-latest-win64-gpl-shared\bin\ffmpeg.exe")
 
 
 def _default_ffprobe() -> Path:
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent / "ffprobe.exe"
+        return Path(sys.executable).parent / "bin" / "ffprobe.exe"
     return Path(r"D:\develop\ffmpeg-master-latest-win64-gpl-shared\bin\ffprobe.exe")
 
 
