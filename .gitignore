@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# ユーザー設定（実行時に生成）
+config.json
+
+# 入力素材（音声ファイル）
+input/
+
+# 変換済み出力
+output/
+
+# ジャケット画像（ユーザー資産）
+images/
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# PyInstaller ビルド成果物
+dist/
+build/
+*.spec
+
+# Claude Code ローカル設定
+.claude/
+
+# エディタ
+.vscode/
+*.swp
