@@ -58,7 +58,7 @@ DEFAULT_CPU_THREADS = max(1, int(CPU_LOGICAL * 0.7))
 class AppConfig:
     ffmpeg_path: str = str(DEFAULT_FFMPEG)
     ffprobe_path: str = str(DEFAULT_FFPROBE)
-    image_path: str = ""
+    images_dir: str = str(DEFAULT_IMAGES_DIR)
     input_dir: str = str(DEFAULT_INPUT_DIR)
     output_dir: str = str(DEFAULT_OUTPUT_DIR)
     resolution: str = "1080p"

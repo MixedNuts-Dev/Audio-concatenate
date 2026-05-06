@@ -80,6 +80,39 @@ class AudioFileTable(ttk.Frame):
                 return
 
 
+class ImageFileTable(ttk.Frame):
+    """画像フォルダ内の画像ファイルを一覧表示する Treeview（単一選択）。"""
+
+    def __init__(self, master: tk.Misc) -> None:
+        super().__init__(master)
+        self.tree = ttk.Treeview(
+            self, columns=("name",), show="headings",
+            selectmode="browse", height=10,
+        )
+        self.tree.heading("name", text="ファイル名")
+        self.tree.column("name", width=320, anchor="w")
+        vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vsb.set)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+        self._paths: dict[str, Path] = {}
+
+    def populate(self, paths: Iterable[Path]) -> None:
+        self.tree.delete(*self.tree.get_children())
+        self._paths.clear()
+        for path in paths:
+            iid = self.tree.insert("", "end", values=(path.name,))
+            self._paths[iid] = path
+
+    def selected_path(self) -> Optional[Path]:
+        sel = self.tree.selection()
+        if not sel:
+            return None
+        return self._paths.get(sel[0])
+
+
 class ProgressPanel(ttk.LabelFrame):
     """変換進捗表示パネル。"""
 
@@ -148,6 +181,7 @@ class App:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(POLL_INTERVAL_MS, self._poll_ui_queue)
         self.refresh_input_list()
+        self.refresh_images_list()
         self._detect_encoder_async()
 
     # ----------------------- UI 構築 -----------------------
@@ -157,7 +191,7 @@ class App:
         top = ttk.LabelFrame(self.root, text="設定")
         top.pack(fill="x", **pad)
 
-        self.var_image = tk.StringVar()
+        self.var_images_dir = tk.StringVar()
         self.var_input_dir = tk.StringVar()
         self.var_output_dir = tk.StringVar()
         self.var_resolution = tk.StringVar()
@@ -167,7 +201,7 @@ class App:
         self.var_cpu_threads = tk.IntVar()
         self.var_encoder_status = tk.StringVar(value="検出中...")
 
-        self._row_path(top, 0, "ジャケット画像", self.var_image, self._browse_image)
+        self._row_path(top, 0, "画像フォルダ", self.var_images_dir, self._browse_images_dir, refresh=True)
         self._row_path(top, 1, "入力フォルダ", self.var_input_dir, self._browse_input_dir, refresh=True)
         self._row_path(top, 2, "出力フォルダ", self.var_output_dir, self._browse_output_dir)
 
@@ -201,12 +235,23 @@ class App:
 
         top.columnconfigure(1, weight=1)
 
-        # 入力一覧
-        mid = ttk.LabelFrame(self.root, text="音声ファイル一覧")
-        mid.pack(fill="both", expand=True, **pad)
-        self.audio_table = AudioFileTable(mid)
+        # 画像一覧 + 音声ファイル一覧（横並び）
+        mid_container = ttk.Frame(self.root)
+        mid_container.pack(fill="both", expand=True, **pad)
+
+        img_frame = ttk.LabelFrame(mid_container, text="画像一覧")
+        img_frame.pack(side="left", fill="both", expand=True, padx=(0, 3))
+        self.image_table = ImageFileTable(img_frame)
+        self.image_table.pack(fill="both", expand=True, padx=4, pady=4)
+        ttk.Button(img_frame, text="再読込", command=self.refresh_images_list).pack(
+            side="left", padx=4, pady=4
+        )
+
+        audio_frame = ttk.LabelFrame(mid_container, text="音声ファイル一覧")
+        audio_frame.pack(side="right", fill="both", expand=True, padx=(3, 0))
+        self.audio_table = AudioFileTable(audio_frame)
         self.audio_table.pack(fill="both", expand=True, padx=4, pady=4)
-        btns = ttk.Frame(mid)
+        btns = ttk.Frame(audio_frame)
         btns.pack(fill="x", padx=4, pady=4)
         self.btn_convert = ttk.Button(btns, text="変換 ▶", command=self._start_conversion)
         self.btn_convert.pack(side="left")
@@ -236,7 +281,7 @@ class App:
             ttk.Button(parent, text="再読込", command=self.refresh_input_list).grid(row=row, column=3, padx=2, pady=2)
 
     def _restore_settings_to_widgets(self) -> None:
-        self.var_image.set(self.cfg.image_path)
+        self.var_images_dir.set(self.cfg.images_dir)
         self.var_input_dir.set(self.cfg.input_dir)
         self.var_output_dir.set(self.cfg.output_dir)
         self.var_resolution.set(self.cfg.resolution)
@@ -246,7 +291,7 @@ class App:
         self.var_cpu_threads.set(self.cfg.cpu_threads)
 
     def _capture_settings_from_widgets(self) -> None:
-        self.cfg.image_path = self.var_image.get()
+        self.cfg.images_dir = self.var_images_dir.get()
         self.cfg.input_dir = self.var_input_dir.get()
         self.cfg.output_dir = self.var_output_dir.get()
         self.cfg.resolution = self.var_resolution.get()
@@ -262,21 +307,27 @@ class App:
             pass
 
     # ----------------------- ファイル参照 -----------------------
-    def _browse_image(self) -> None:
-        current = self.var_image.get()
-        if current and Path(current).is_file():
-            initial_dir = str(Path(current).parent)
-        elif self.cfg.input_dir and Path(self.cfg.input_dir).is_dir():
-            initial_dir = self.cfg.input_dir
-        else:
-            initial_dir = str(Path.home())
-        path = filedialog.askopenfilename(
-            title="ジャケット画像を選択",
-            initialdir=initial_dir,
-            filetypes=[("Image", " ".join(f"*{e}" for e in SUPPORTED_IMAGE_EXTS)), ("All", "*.*")],
+    def _browse_images_dir(self) -> None:
+        path = filedialog.askdirectory(
+            title="画像フォルダを選択",
+            initialdir=self.var_images_dir.get() or str(Path.home()),
         )
         if path:
-            self.var_image.set(path)
+            self.var_images_dir.set(path)
+            self.refresh_images_list()
+
+    def refresh_images_list(self) -> None:
+        images_dir = Path(self.var_images_dir.get())
+        if not images_dir.is_dir():
+            self.image_table.populate([])
+            if self.var_images_dir.get().strip():
+                self._append_log(f"[警告] 画像フォルダが見つかりません: {images_dir}")
+            return
+        files = sorted(
+            p for p in images_dir.iterdir()
+            if p.is_file() and p.suffix.lower() in SUPPORTED_IMAGE_EXTS
+        )
+        self.image_table.populate(files)
 
     def _browse_input_dir(self) -> None:
         path = filedialog.askdirectory(title="入力フォルダを選択", initialdir=self.var_input_dir.get())
@@ -333,9 +384,9 @@ class App:
             messagebox.showinfo("実行中", "別の変換が実行中です。")
             return
 
-        image = self.var_image.get().strip()
-        if not image or not Path(image).exists():
-            messagebox.showwarning("画像未選択", "ジャケット画像を選択してください。")
+        image_path = self.image_table.selected_path()
+        if image_path is None or not image_path.exists():
+            messagebox.showwarning("画像未選択", "画像一覧からジャケット画像を選択してください。")
             return
         audio = self.audio_table.selected_path()
         if audio is None:
@@ -353,7 +404,7 @@ class App:
         self.converter = FFmpegConverter(self.cfg)
 
         job = ConversionJob(
-            image_path=Path(image),
+            image_path=image_path,
             audio_path=audio,
             output_path=output_dir / (audio.stem + ".mp4"),
             resolution=self.cfg.resolution,
